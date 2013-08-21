@@ -65,8 +65,10 @@
 @property(nonatomic,retain) NSArray *peopleBatch;
 @property(nonatomic,retain) NSURLConnection *eventsConnection;
 @property(nonatomic,retain) NSURLConnection *peopleConnection;
+@property(nonatomic,retain) NSURLConnection *decideConnection;
 @property(nonatomic,retain) NSMutableData *eventsResponseData;
 @property(nonatomic,retain) NSMutableData *peopleResponseData;
+@property(nonatomic,retain) NSMutableData *decideResponseData;
 @property(nonatomic,assign) UIBackgroundTaskIdentifier taskId;
 @property(nonatomic,assign) dispatch_queue_t serialQueue;
 @property(nonatomic,assign) SCNetworkReachabilityRef reachability;
@@ -84,6 +86,11 @@
 - (id)initWithMixpanel:(Mixpanel *)mixpanel;
 
 @end
+
+static NSString *MPURLEncode(NSString *s)
+{
+    return [(NSString *)CFURLCreateStringByAddingPercentEscapes(kCFAllocatorDefault, (CFStringRef)s, NULL, CFSTR("!*'();:@&=+$,/?%#[]"), kCFStringEncodingUTF8) autorelease];
+}
 
 @implementation Mixpanel
 
@@ -206,8 +213,10 @@ static Mixpanel *sharedInstance = nil;
     self.peopleBatch = nil;
     self.eventsConnection = nil;
     self.peopleConnection = nil;
+    self.decideConnection = nil;
     self.eventsResponseData = nil;
     self.peopleResponseData = nil;
+    self.decideResponseData = nil;
     self.dateFormatter = nil;
     if (self.reachability) {
         SCNetworkReachabilitySetCallback(self.reachability, NULL, NULL);
@@ -882,6 +891,8 @@ static Mixpanel *sharedInstance = nil;
             self.eventsResponseData = [NSMutableData data];
         } else if (connection == self.peopleConnection) {
             self.peopleResponseData = [NSMutableData data];
+        } else if (connection == self.decideConnection) {
+            self.decideResponseData = [NSMutableData data];
         }
     });
 }
@@ -893,6 +904,8 @@ static Mixpanel *sharedInstance = nil;
             [self.eventsResponseData appendData:data];
         } else if (connection == self.peopleConnection) {
             [self.peopleResponseData appendData:data];
+        } else if (connection == self.decideConnection) {
+            [self.decideResponseData appendData:data];
         }
     });
 }
@@ -911,6 +924,9 @@ static Mixpanel *sharedInstance = nil;
             self.peopleResponseData = nil;
             self.peopleConnection = nil;
             [self archivePeople];
+        } else if (connection == self.decideConnection) {
+            self.decideResponseData = nil;
+            self.decideConnection = nil;
         }
         [self updateNetworkActivityIndicator];
         [self endBackgroundTaskIfComplete];
@@ -943,10 +959,129 @@ static Mixpanel *sharedInstance = nil;
             self.peopleBatch = nil;
             self.peopleResponseData = nil;
             self.peopleConnection = nil;
+        } else if (connection == self.decideConnection) {
+            [self didReceiveDecideResponse:self.decideResponseData];
+            self.decideResponseData = nil;
+            self.decideConnection = nil;
         }
         [self updateNetworkActivityIndicator];
         [self endBackgroundTaskIfComplete];
     });
+}
+
+#pragma mark - Surveys
+
+- (void)didReceiveDecideResponse:(NSData *)data
+{
+    NSError *error = nil;
+    NSDictionary *response = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+    if (response[@"surveys"]) {
+        for (NSDictionary *dict in response[@"surveys"]) {
+            MPSurvey *survey = [MPSurvey surveyWithJSONObject:dict];
+            if (survey) {
+                if (self.delegate) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [self.delegate mixpanel:self didReceiveSurvey:survey];
+                    });
+                }
+            }
+        }
+    }
+}
+
+- (void)checkForSurveys
+{
+    NSString *params = [NSString stringWithFormat:@"token=%@&distinct_id=%@&survey_version=1", self.mixpanel.apiToken, MPURLEncode(self.distinctId)];
+    NSURL *url = [NSURL URLWithString:[self.serverURL stringByAppendingString:[NSString stringWithFormat:@"/decide?%@", params]]];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    [request setValue:@"gzip" forHTTPHeaderField:@"Accept-Encoding"];
+    self.decideConnection = [[[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:NO] autorelease];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.decideConnection start];
+    });
+}
+
+- (void)showSurvey:(MPSurvey *)survey inView:(UIView *)view
+{
+
+}
+
+
+- (void)checkForSurvey
+{
+}
+
+- (void)requestPermissionToConductSurvey
+{
+    UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:@"Help Us Improve"
+                                                        message:@"We're trying to make this app better for you. Would you mind taking a brief survey? It won't take more than a minute. Thanks for your support!"
+                                                       delegate:self
+                                              cancelButtonTitle:@"No, Thanks"
+                                              otherButtonTitles:@"Take Survey", @"Maybe Later", nil];
+	[alertView show];
+}
+
+- (void)showFakeSurvey
+{
+    self.mixpanel.survey = @{
+                             @"version": @0,
+                             @"questions": @[
+                                     @{
+                                         @"prompt": @"If we discontinued our service, how much would you care?",
+                                         @"property": @"Engagement",
+                                         @"choices": @[
+                                                 @"A lot",
+                                                 @"A little",
+                                                 @"Not at all",
+                                                 @"I'd prefer you didn't exist",
+                                                 [NSNull null]
+                                                 ]
+                                         },
+                                     @{
+                                         @"prompt": @"How many employees does your company have?",
+                                         @"property": @"Company Size",
+                                         @"choices": @[
+                                                 @1,
+                                                 @1.5,
+                                                 @100,
+                                                 @1000,
+                                                 @10000
+                                                 ]
+                                         },
+                                     @{
+                                         @"prompt": @"Would you recommend this app to a friend?",
+                                         @"property": @"Promoter",
+                                         @"choices": @[
+                                                 @YES,
+                                                 @NO
+                                                 ]
+                                         },
+                                     @{
+                                         @"prompt": @"Is this question too long or just long enough to be effective in getting to the exact point we were trying to get across when engaging you in as efficient a manner as possible?",
+                                         @"property": @"Promoter",
+                                         @"choices": @[
+                                                 @YES,
+                                                 @NO
+                                                 ]
+                                         }
+                                     ]
+                             };
+    [self showSurvey];
+}
+
+- (void)showSurvey
+{
+    NSMutableArray *questionViewControllers = [NSMutableArray array];
+    for (NSDictionary *question in [self.mixpanel.survey objectForKey:@"questions"]) {
+        NSString *prompt = [question objectForKey:@"prompt"];
+        NSArray *choices = [question objectForKey:@"choices"];
+        NSString *property = [question objectForKey:@"property"];
+        MixpanelSurveyQuestionViewController *controller = [[[MixpanelSurveyQuestionViewController alloc] initWithPrompt:prompt andChoices:choices forProperty:property] autorelease];
+        [questionViewControllers addObject:controller];
+    }
+    MixpanelSurveyNavigationController *surveyController = [[MixpanelSurveyNavigationController alloc] initWithMixpanel:self.mixpanel andQuestionViewControllers:questionViewControllers];
+    [self.mixpanel.delegate mixpanel:self.mixpanel didReceivePermissionToConductSurvey:surveyController];
+    [surveyController release];
 }
 
 @end

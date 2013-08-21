@@ -19,6 +19,8 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
+#import "MPSurvey.h"
+
 @class    MixpanelPeople;
 @protocol MixpanelDelegate;
 
@@ -383,6 +385,9 @@
  */
 - (void)archive;
 
+- (void)checkForSurveys;
+- (void)showSurvey:(MPSurvey *)survey inView:(UIView *)view;
+
 @end
 
 /*!
@@ -612,5 +617,7 @@
  @param mixpanel        Mixpanel API instance
  */
 - (BOOL)mixpanelWillFlush:(Mixpanel *)mixpanel;
+
+- (void)mixpanel:(Mixpanel *)mixpanel didReceiveSurvey:(MPSurvey *)survey;
 
 @end

@@ -25,9 +25,6 @@
 @property(nonatomic, retain) IBOutlet UISegmentedControl *genderControl;
 @property(nonatomic, retain) IBOutlet UISegmentedControl *weaponControl;
 
-- (IBAction)trackEvent:(id)sender;
-- (IBAction)sendPeopleRecord:(id)sender;
-
 @end
 
 @implementation ViewController
@@ -39,25 +36,6 @@
     [super dealloc];
 }
 
-- (void)viewDidLoad
-{
-    [super viewDidLoad];
-    self.view.backgroundColor = [UIColor colorWithPatternImage: [UIImage imageNamed:@"grid.png"]];
-    UIScrollView *tempScrollView = (UIScrollView *)self.view;
-    tempScrollView.contentSize = CGSizeMake(320, 342);
-}
-
-- (void)viewDidUnload
-{
-    [super viewDidUnload];
-    // Release any retained subviews of the main view.
-}
-
-- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation
-{
-    return YES;
-}
-
 - (IBAction)trackEvent:(id)sender
 {
     Mixpanel *mixpanel = [Mixpanel sharedInstance];
@@ -67,7 +45,7 @@
                                                  nil]];
 }
 
-- (IBAction)sendPeopleRecord:(id)sender
+- (IBAction)setPeopleProperties:(id)sender
 {
     Mixpanel *mixpanel = [Mixpanel sharedInstance];
     [mixpanel.people set:[NSDictionary dictionaryWithObjectsAndKeys:
@@ -84,6 +62,12 @@
     // identify: is called and flush them at that time. That way, you can set properties before a user is logged in
     // and identify them once you know their user ID.
     [mixpanel identify:mixpanel.distinctId];
+}
+
+- (IBAction)checkForSurveys:(id)sender
+{
+    Mixpanel *mixpanel = [Mixpanel sharedInstance];
+    [mixpanel checkForSurveys];
 }
 
 @end
