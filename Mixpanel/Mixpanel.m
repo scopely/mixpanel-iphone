@@ -40,18 +40,6 @@
 
 #define VERSION @"2.2.2"
 
-#ifdef MIXPANEL_LOG
-#define MixpanelLog(...) NSLog(__VA_ARGS__)
-#else
-#define MixpanelLog(...)
-#endif
-
-#ifdef MIXPANEL_DEBUG
-#define MixpanelDebug(...) NSLog(__VA_ARGS__)
-#else
-#define MixpanelDebug(...)
-#endif
-
 @interface Mixpanel () <UIAlertViewDelegate, MPSurveyNavigationControllerDelegate> {
     NSUInteger _flushInterval;
 }
@@ -166,7 +154,7 @@ static Mixpanel *sharedInstance = nil;
             if (SCNetworkReachabilitySetCallback(self.reachability, MixpanelReachabilityCallback, &context)) {
                 if (SCNetworkReachabilitySetDispatchQueue(self.reachability, self.serialQueue)) {
                     reachabilityOk = YES;
-                    MixpanelDebug(@"%@ successfully set up reachability callback", self);
+                    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ successfully set up reachability callback", self);
                 } else {
                     // cleanup callback if setting dispatch queue failed
                     SCNetworkReachabilitySetCallback(self.reachability, NULL, NULL);
@@ -481,7 +469,7 @@ static Mixpanel *sharedInstance = nil;
             [p addEntriesFromDictionary:properties];
         }
         NSDictionary *e = @{@"event": event, @"properties": [NSDictionary dictionaryWithDictionary:p]};
-        MixpanelLog(@"%@ queueing event: %@", self, e);
+        CoreLogType(WBLogLevelInfo, WBLogTypeMixpanelAnalytics, @"%@ queueing event: %@", self, e);
         [self.eventsQueue addObject:e];
         if ([self.eventsQueue count] > 500) {
             [self.eventsQueue removeObjectAtIndex:0];
@@ -613,7 +601,7 @@ static Mixpanel *sharedInstance = nil;
                                                         selector:@selector(flush)
                                                         userInfo:nil
                                                          repeats:YES];
-            MixpanelDebug(@"%@ started flush timer: %@", self, self.timer);
+            CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ started flush timer: %@", self, self.timer);
         }
     });
 }
@@ -623,7 +611,7 @@ static Mixpanel *sharedInstance = nil;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.timer) {
             [self.timer invalidate];
-            MixpanelDebug(@"%@ stopped flush timer: %@", self, self.timer);
+            CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ stopped flush timer: %@", self, self.timer);
         }
         self.timer = nil;
     });
@@ -632,18 +620,17 @@ static Mixpanel *sharedInstance = nil;
 - (void)flush
 {
     dispatch_async(self.serialQueue, ^{
-        MixpanelDebug(@"%@ flush starting", self);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ flush starting", self);
 
         __strong id<MixpanelDelegate> strongDelegate = _delegate;
         if (strongDelegate != nil && [strongDelegate respondsToSelector:@selector(mixpanelWillFlush:)] && ![strongDelegate mixpanelWillFlush:self]) {
-            MixpanelDebug(@"%@ flush deferred by delegate", self);
+            CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ flush deferred by delegate", self);
             return;
         }
 
         [self flushEvents];
         [self flushPeople];
-
-        MixpanelDebug(@"%@ flush complete", self);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ flush complete", self);
     });
 }
 
@@ -673,7 +660,7 @@ static Mixpanel *sharedInstance = nil;
 
         NSString *requestData = [self encodeAPIData:batch];
         NSString *postBody = [NSString stringWithFormat:@"ip=1&data=%@", requestData];
-        MixpanelDebug(@"%@ flushing %lu of %lu to %@: %@", self, (unsigned long)[batch count], (unsigned long)[queue count], endpoint, queue);
+        CoreLogType(WBLogLevelTrace, WBLogTypeMixpanelAnalytics, @"%@ flushing %lu of %lu to %@: %@", self, (unsigned long)[batch count], (unsigned long)[queue count], endpoint, queue);
         NSURLRequest *request = [self apiRequestWithEndpoint:endpoint andBody:postBody];
         NSError *error = nil;
 
@@ -720,7 +707,7 @@ static Mixpanel *sharedInstance = nil;
     [request setValue:@"gzip" forHTTPHeaderField:@"Accept-Encoding"];
     [request setHTTPMethod:@"POST"];
     [request setHTTPBody:[body dataUsingEncoding:NSUTF8StringEncoding]];
-    MixpanelDebug(@"%@ http request: %@?%@", self, url, body);
+    CoreLogType(WBLogLevelTrace, WBLogTypeMixpanelAnalytics, @"%@ http request: %@?%@", self, url, body);
     return request;
 }
 
@@ -766,7 +753,7 @@ static Mixpanel *sharedInstance = nil;
 - (void)archiveEvents
 {
     NSString *filePath = [self eventsFilePath];
-    MixpanelDebug(@"%@ archiving events data to %@: %@", self, filePath, self.eventsQueue);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ archiving events data to %@: %@", self, filePath, self.eventsQueue);
     if (![NSKeyedArchiver archiveRootObject:self.eventsQueue toFile:filePath]) {
         NSLog(@"%@ unable to archive events data", self);
     }
@@ -775,7 +762,7 @@ static Mixpanel *sharedInstance = nil;
 - (void)archivePeople
 {
     NSString *filePath = [self peopleFilePath];
-    MixpanelDebug(@"%@ archiving people data to %@: %@", self, filePath, self.peopleQueue);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ archiving people data to %@: %@", self, filePath, self.peopleQueue);
     if (![NSKeyedArchiver archiveRootObject:self.peopleQueue toFile:filePath]) {
         NSLog(@"%@ unable to archive people data", self);
     }
@@ -791,7 +778,7 @@ static Mixpanel *sharedInstance = nil;
     [p setValue:self.people.distinctId forKey:@"peopleDistinctId"];
     [p setValue:self.people.unidentifiedQueue forKey:@"peopleUnidentifiedQueue"];
     [p setValue:self.shownSurveyCollections forKey:@"shownSurveyCollections"];
-    MixpanelDebug(@"%@ archiving properties data to %@: %@", self, filePath, p);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ archiving properties data to %@: %@", self, filePath, p);
     if (![NSKeyedArchiver archiveRootObject:p toFile:filePath]) {
         NSLog(@"%@ unable to archive properties data", self);
     }
@@ -809,10 +796,10 @@ static Mixpanel *sharedInstance = nil;
     NSString *filePath = [self eventsFilePath];
     @try {
         self.eventsQueue = [NSKeyedUnarchiver unarchiveObjectWithFile:filePath];
-        MixpanelDebug(@"%@ unarchived events data: %@", self, self.eventsQueue);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ unarchived events data: %@", self, self.eventsQueue);
     }
     @catch (NSException *exception) {
-        NSLog(@"%@ unable to unarchive events data, starting fresh", self);
+        CoreLogType(WBLogLevelError, WBLogTypeMixpanelAnalytics, @"%@ unable to unarchive events data, starting fresh", self);
         [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
         self.eventsQueue = nil;
     }
@@ -826,10 +813,10 @@ static Mixpanel *sharedInstance = nil;
     NSString *filePath = [self peopleFilePath];
     @try {
         self.peopleQueue = [NSKeyedUnarchiver unarchiveObjectWithFile:filePath];
-        MixpanelDebug(@"%@ unarchived people data: %@", self, self.peopleQueue);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ unarchived people data: %@", self, self.peopleQueue);
     }
     @catch (NSException *exception) {
-        NSLog(@"%@ unable to unarchive people data, starting fresh", self);
+        CoreLogType(WBLogLevelError, WBLogTypeMixpanelAnalytics, @"%@ unable to unarchive people data, starting fresh", self);
         [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
         self.peopleQueue = nil;
     }
@@ -844,10 +831,10 @@ static Mixpanel *sharedInstance = nil;
     NSDictionary *properties = nil;
     @try {
         properties = [NSKeyedUnarchiver unarchiveObjectWithFile:filePath];
-        MixpanelDebug(@"%@ unarchived properties data: %@", self, properties);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ unarchived properties data: %@", self, properties);
     }
     @catch (NSException *exception) {
-        NSLog(@"%@ unable to unarchive properties data, starting fresh", self);
+        CoreLogType(WBLogLevelError, WBLogTypeMixpanelAnalytics, @"%@ unable to unarchive properties data, starting fresh", self);
         [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
     }
     if (properties) {
@@ -864,7 +851,7 @@ static Mixpanel *sharedInstance = nil;
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification
 {
-    MixpanelDebug(@"%@ application did become active", self);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ application did become active", self);
     [self startFlushTimer];
     if (self.checkForSurveysOnActive) {
         NSDate *start = [NSDate date];
@@ -878,27 +865,27 @@ static Mixpanel *sharedInstance = nil;
 
 - (void)applicationWillResignActive:(NSNotification *)notification
 {
-    MixpanelDebug(@"%@ application will resign active", self);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ application will resign active", self);
     [self stopFlushTimer];
 }
 
 - (void)applicationDidEnterBackground:(NSNotificationCenter *)notification
 {
-    MixpanelDebug(@"%@ did enter background", self);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ did enter background", self);
 
     self.taskId = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
-        MixpanelDebug(@"%@ flush %lu cut short", self, (unsigned long)self.taskId);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ flush %lu cut short", self, (unsigned long)self.taskId);
         [[UIApplication sharedApplication] endBackgroundTask:self.taskId];
         self.taskId = UIBackgroundTaskInvalid;
     }];
-    MixpanelDebug(@"%@ starting background cleanup task %lu", self, (unsigned long)self.taskId);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ starting background cleanup task %lu", self, (unsigned long)self.taskId);
 
     [self archive];
     if (self.flushOnBackground) {
         [self flush];
     }
     dispatch_async(_serialQueue, ^{
-        MixpanelDebug(@"%@ ending background cleanup task %lu", self, (unsigned long)self.taskId);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ ending background cleanup task %lu", self, (unsigned long)self.taskId);
         if (self.taskId != UIBackgroundTaskInvalid) {
             [[UIApplication sharedApplication] endBackgroundTask:self.taskId];
             self.taskId = UIBackgroundTaskInvalid;
@@ -909,7 +896,7 @@ static Mixpanel *sharedInstance = nil;
 
 - (void)applicationWillEnterForeground:(NSNotificationCenter *)notification
 {
-    MixpanelDebug(@"%@ will enter foreground", self);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ will enter foreground", self);
     dispatch_async(self.serialQueue, ^{
         if (self.taskId != UIBackgroundTaskInvalid) {
             [[UIApplication sharedApplication] endBackgroundTask:self.taskId];
@@ -921,7 +908,7 @@ static Mixpanel *sharedInstance = nil;
 
 - (void)applicationWillTerminate:(NSNotification *)notification
 {
-    MixpanelDebug(@"%@ application will terminate", self);
+    CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ application will terminate", self);
     [self archive];
 }
 
@@ -939,15 +926,15 @@ static Mixpanel *sharedInstance = nil;
 - (void)checkForSurveysWithCompletion:(void (^)(NSArray *surveys))completion
 {
     dispatch_async(self.serialQueue, ^{
-        MixpanelDebug(@"%@ survey check started", self);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ survey check started", self);
         if (!self.people.distinctId) {
-            MixpanelDebug(@"%@ survey check skipped because no user has been identified", self);
+            CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ survey check skipped because no user has been identified", self);
             return;
         }
 
         if (!_surveys) {
 
-            MixpanelDebug(@"%@ survey cache not found, starting network request", self);
+            CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ survey cache not found, starting network request", self);
 
             NSString *params = [NSString stringWithFormat:@"version=1&lib=iphone&token=%@&distinct_id=%@", self.apiToken, MPURLEncode(self.distinctId)];
             NSURL *url = [NSURL URLWithString:[self.serverURL stringByAppendingString:[NSString stringWithFormat:@"/decide?%@", params]]];
@@ -956,22 +943,22 @@ static Mixpanel *sharedInstance = nil;
             NSError *error = nil;
             NSData *data = [NSURLConnection sendSynchronousRequest:request returningResponse:nil error:&error];
             if (error) {
-                NSLog(@"%@ survey check http error: %@", self, error);
+                CoreLogType(WBLogLevelError, WBLogTypeMixpanelAnalytics, @"%@ survey check http error: %@", self, error);
                 return;
             }
             NSDictionary *object = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
             if (error) {
-                NSLog(@"%@ survey check json error: %@", self, error);
+                CoreLogType(WBLogLevelError, WBLogTypeMixpanelAnalytics, @"%@ survey check json error: %@", self, error);
                 return;
             }
             if (object[@"error"]) {
-                MixpanelDebug(@"%@ survey check api error: %@", self, object[@"error"]);
+                CoreLogType(WBLogLevelError, WBLogTypeMixpanelAnalytics, @"%@ survey check api error: %@", self, object[@"error"]);
                 return;
             }
 
             NSArray *rawSurveys = object[@"surveys"];
             if (!rawSurveys || ![rawSurveys isKindOfClass:[NSArray class]]) {
-                MixpanelDebug(@"%@ survey check response format error: %@", self, object);
+                CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ survey check response format error: %@", self, object);
                 return;
             }
 
@@ -984,7 +971,7 @@ static Mixpanel *sharedInstance = nil;
             }
             self.surveys = parsedSurveys;
         } else {
-            MixpanelDebug(@"%@ survey cache found, skipping network request", self);
+            CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ survey cache found, skipping network request", self);
         }
 
         NSMutableArray *unseenSurveys = [NSMutableArray array];
@@ -994,7 +981,7 @@ static Mixpanel *sharedInstance = nil;
             }
         }
 
-        MixpanelDebug(@"%@ survey check found %lu available surveys out of %lu total: %@", self, (unsigned long)[unseenSurveys count], (unsigned long)[_surveys count], unseenSurveys);
+        CoreLogType(WBLogLevelDebug, WBLogTypeMixpanelAnalytics, @"%@ survey check found %lu available surveys out of %lu total: %@", self, (unsigned long)[unseenSurveys count], (unsigned long)[_surveys count], unseenSurveys);
 
         if (completion) {
             completion([NSArray arrayWithArray:unseenSurveys]);
@@ -1024,7 +1011,7 @@ static Mixpanel *sharedInstance = nil;
     if (survey) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (_currentlyShowingSurvey) {
-                MixpanelLog(@"%@ already showing survey: %@", self, _currentlyShowingSurvey);
+                CoreLogType(WBLogLevelWarn, WBLogTypeMixpanelAnalytics, @"%@ already showing survey: %@", self, _currentlyShowingSurvey);
             } else {
                 self.currentlyShowingSurvey = survey;
                 if (showAlert) {
@@ -1040,7 +1027,7 @@ static Mixpanel *sharedInstance = nil;
             }
         });
     } else {
-        NSLog(@"%@ cannot show nil survey", self);
+        CoreLogType(WBLogLevelFatal, WBLogTypeMixpanelAnalytics, @"%@ cannot show nil survey", self);
     }
 }
 
@@ -1072,7 +1059,7 @@ static Mixpanel *sharedInstance = nil;
 
 - (void)markSurveyShown:(MPSurvey *)survey
 {
-    MixpanelDebug(@"%@ marking survey shown: %@, %@", self, @(survey.collectionID), _shownSurveyCollections);
+    CoreLogType(WBLogLevelInfo, WBLogTypeMixpanelAnalytics, @"%@ marking survey shown: %@, %@", self, @(survey.collectionID), _shownSurveyCollections);
     [_shownSurveyCollections addObject:@(survey.collectionID)];
     [self.people append:@{@"$surveys": @(survey.ID), @"$collections": @(survey.collectionID)}];
 }
@@ -1082,7 +1069,7 @@ static Mixpanel *sharedInstance = nil;
     [controller.presentingViewController dismissViewControllerAnimated:YES completion:nil];
     self.currentlyShowingSurvey = nil;
     if ([controller.survey.name isEqualToString:@"$ignore"]) {
-        MixpanelDebug(@"%@ not sending survey %@ result", self, controller.survey);
+        CoreLogType(WBLogLevelWarn, WBLogTypeMixpanelAnalytics, @"%@ not sending survey %@ result", self, controller.survey);
     } else {
         [self markSurveyShown:controller.survey];
         for (NSUInteger i = 0, n = [answers count]; i < n; i++) {
@@ -1175,13 +1162,13 @@ static Mixpanel *sharedInstance = nil;
             r[action] = [NSDictionary dictionaryWithDictionary:p];
             if (self.distinctId) {
                 r[@"$distinct_id"] = self.distinctId;
-                MixpanelLog(@"%@ queueing people record: %@", self.mixpanel, r);
+                CoreLogType(WBLogLevelInfo, WBLogTypeMixpanelAnalytics, @"%@ queueing people record: %@", self.mixpanel, r);
                 [strongMixpanel.peopleQueue addObject:r];
                 if ([strongMixpanel.peopleQueue count] > 500) {
                     [strongMixpanel.peopleQueue removeObjectAtIndex:0];
                 }
             } else {
-                MixpanelLog(@"%@ queueing unidentified people record: %@", self.mixpanel, r);
+                CoreLogType(WBLogLevelInfo, WBLogTypeMixpanelAnalytics, @"%@ queueing unidentified people record: %@", self.mixpanel, r);
                 [self.unidentifiedQueue addObject:r];
                 if ([self.unidentifiedQueue count] > 500) {
                     [self.unidentifiedQueue removeObjectAtIndex:0];
