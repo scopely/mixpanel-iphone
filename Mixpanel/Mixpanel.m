@@ -91,7 +91,7 @@ static void MixpanelReachabilityCallback(SCNetworkReachabilityRef target, SCNetw
             [mixpanel reachabilityChanged:flags];
         }
     } else {
-        CoreLogType(WBLogLevelError, WBLogTypeMixpanelAnalytics, @"Mixpanel reachability callback received unexpected info object");
+        NSLog(@"Mixpanel reachability callback received unexpected info object");
     }
 }
 
